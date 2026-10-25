@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>75x75 大迷路すごろく</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #1a1a2e;
+            color: #ffffff;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 10px 16px;
+            background: #16213e;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #0f3460;
+        }
+        .stats {
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .controls {
+            display: flex;
+            gap: 8px;
+        }
+        .btn {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .btn-item {
+            background: #f5a623;
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        #game-container {
+            flex: 1;
+            position: relative;
+            background: #0f0f1a;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+
+        /* 下部バナー広告エリア */
+        #ad-banner-container {
+            width: 100%;
+            height: 60px;
+            background-color: #0b1325;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-top: 2px solid #e94560;
+            z-index: 10;
+        }
+        .ad-placeholder {
+            width: 320px;
+            height: 50px;
+            background: #1a2639;
+            color: #888;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            border: 1px dashed #44566c;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="stats">
+            <div>現在地: <span id="pos-text" style="color:#00fff5;">(1, 1)</span></div>
+            <div>所持アイテム: <span id="item-text" style="color:#f5a623;">なし</span></div>
+        </div>
+        <div class="controls">
+            <button class="btn btn-item" id="use-item-btn" disabled>⚡ アイテム使用</button>
+            <button class="btn" id="dice-btn">🎲 サイコロを振る</button>
+        </div>
+    </header>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- バナー広告枠 -->
+    <div id="ad-banner-container">
+        <div class="ad-placeholder">
+            [ バナー広告エリア (320x50) ]
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const posText = document.getElementById('pos-text');
+        const itemText = document.getElementById('item-text');
+        const diceBtn = document.getElementById('dice-btn');
+        const useItemBtn = document.getElementById('use-item-btn');
+
+        const MAP_SIZE = 75;
+        const TILE_SIZE = 30;
+
+        // 迷路データ (0:道, 1:壁, 2:アイテム宝箱)
+        let map = [];
+        const GOAL = { x: MAP_SIZE - 2, y: MAP_SIZE - 2 };
+        let player = { x: 1, y: 1, item: null, isDouble: false };
+
+        function initMap() {
+            for (let y = 0; y < MAP_SIZE; y++) {
+                map[y] = [];
+                for (let x = 0; x < MAP_SIZE; x++) {
+                    if (x === 0 || y === 0 || x === MAP_SIZE - 1 || y === MAP_SIZE - 1 || (x % 2 === 0 && y % 2 === 0)) {
+                        map[y][x] = 1; // 壁
+                    } else {
+                        // ランダムで宝箱アイテムを配置
+                        map[y][x] = (Math.random() < 0.03 && !(x === 1 && y === 1)) ? 2 : 0;
+                    }
+                }
+            }
+        }
+        initMap();
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const cameraX = canvas.width / 2 - (player.x * TILE_SIZE + TILE_SIZE / 2);
+            const cameraY = canvas.height / 2 - (player.y * TILE_SIZE + TILE_SIZE / 2);
+
+            ctx.save();
+            ctx.translate(cameraX, cameraY);
+
+            // マップ描画
+            for (let y = 0; y < MAP_SIZE; y++) {
+                for (let x = 0; x < MAP_SIZE; x++) {
+                    if (map[y][x] === 1) {
+                        ctx.fillStyle = '#16213e'; // 壁
+                    } else {
+                        ctx.fillStyle = '#0f3460'; // 通路
+                    }
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE - 1, TILE_SIZE - 1);
+
+                    // 宝箱アイテム
+                    if (map[y][x] === 2) {
+                        ctx.fillStyle = '#f5a623';
+                        ctx.fillRect(x * TILE_SIZE + 6, y * TILE_SIZE + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+                    }
+                }
+            }
+
+            // ゴール (73, 73)
+            ctx.fillStyle = '#e94560';
+            ctx.fillRect(GOAL.x * TILE_SIZE, GOAL.y * TILE_SIZE, TILE_SIZE - 1, TILE_SIZE - 1);
+
+            // プレイヤー
+            ctx.fillStyle = player.isDouble ? '#ff00ff' : '#00fff5';
+            ctx.shadowColor = ctx.fillStyle;
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(
+                player.x * TILE_SIZE + TILE_SIZE / 2,
+                player.y * TILE_SIZE + TILE_SIZE / 2,
+                TILE_SIZE / 3,
+                0, Math.PI * 2
+            );
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // 機能①: アイテム使用処理
+        useItemBtn.addEventListener('click', () => {
+            if (player.item === '2x') {
+                player.isDouble = true;
+                alert("⚡ 次のサイコロの出目が2倍になります！");
+                player.item = null;
+                updateUI();
+                draw();
+            }
+        });
+
+        // 機能②: ピッタリ移動＆オーバー折り返し処理
+        diceBtn.addEventListener('click', () => {
+            let roll = Math.floor(Math.random() * 6) + 1;
+            if (player.isDouble) {
+                roll *= 2;
+                player.isDouble = false;
+            }
+
+            let steps = roll;
+            let forward = true; // 進む方向（true: ゴールに向かう, false: 折り返す）
+
+            while (steps > 0) {
+                // ゴールまでの距離計算（右下に一直線に進む簡易ロジック）
+                const distToGoal = (GOAL.x - player.x) + (GOAL.y - player.y);
+
+                if (distToGoal === 0 && steps > 0) {
+                    // ゴールを踏んだが目が余っている場合 ➔ 折り返す！
+                    forward = false;
+                }
+
+                if (forward) {
+                    // ゴールに向かって進む
+                    if (player.x < GOAL.x) player.x++;
+                    else if (player.y < GOAL.y) player.y++;
+                } else {
+                    // ゴールから戻る（折り返し）
+                    if (player.x > 1) player.x--;
+                    else if (player.y > 1) player.y--;
+                }
+
+                steps--;
+            }
+
+            // アイテムマス獲得判定
+            if (map[player.y][player.x] === 2) {
+                map[player.y][player.x] = 0; // 宝箱を消す
+                player.item = '2x';
+                alert("🎁 宝箱を開けた！「サイコロ2倍アイテム」をゲット！");
+            }
+
+            // ピッタリゴール判定
+            if (player.x === GOAL.x && player.y === GOAL.y) {
+                alert("🎉 ピッタリゴール！！75×75大迷路クリアおめでとう！");
+            }
+
+            updateUI();
+            draw();
+        });
+
+        function updateUI() {
+            posText.textContent = `(${player.x}, ${player.y})`;
+            if (player.item) {
+                itemText.textContent = player.item === '2x' ? 'サイコロ2倍' : 'なし';
+                useItemBtn.disabled = false;
+            } else {
+                itemText.textContent = player.isDouble ? '2倍発動中！' : 'なし';
+                useItemBtn.disabled = true;
+            }
+        }
+
+        resizeCanvas();
+    </script>
+</body>
+</html>
